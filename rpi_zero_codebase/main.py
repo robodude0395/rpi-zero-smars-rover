@@ -4,7 +4,7 @@ import readchar
 ADDR = 0x08
 bus = SMBus(1)
 
-speed = 80
+speed = 200
 
 left = 0
 right = 0
