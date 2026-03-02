@@ -1,20 +1,24 @@
-import smbus
+from smbus2 import SMBus, i2c_msg
 import time
 
 I2C_ADDR = 0x08
-BUS = 1  # 1 for modern Raspberry Pi
-
-bus = smbus.SMBus(BUS)
+BUS_NUM = 1   # 1 for Pi Zero
 
 def send_message(message):
-    # Convert string to list of ASCII values
-    data = [ord(c) for c in message]
+    # Limit to 31 chars (Arduino buffer safety)
+    message = message[:31]
 
-    # Send in one block (max 32 bytes recommended)
-    bus.write_i2c_block_data(I2C_ADDR, 0x00, data)
+    # Convert to bytes
+    data = message.encode('utf-8')
+
+    # Create I2C write message
+    msg = i2c_msg.write(I2C_ADDR, data)
+
+    with SMBus(BUS_NUM) as bus:
+        bus.i2c_rdwr(msg)
 
 if __name__ == "__main__":
     while True:
-        msg = input("Enter message: ")
-        send_message(msg[:31])  # limit to 31 chars
+        text = input("Enter message: ")
+        send_message(text)
         time.sleep(0.1)
