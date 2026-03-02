@@ -97,18 +97,14 @@ void updateDisplay() {
 
 /* ---------- Setup ---------- */
 void setup() {
-  pinMode(IN1, OUTPUT);
-  pinMode(IN2, OUTPUT);
-  pinMode(EN1, OUTPUT);
 
-  pinMode(IN3, OUTPUT);
-  pinMode(IN4, OUTPUT);
-  pinMode(EN2, OUTPUT);
-
+  // Start as SLAVE first
   Wire.begin(I2C_ADDR);
   Wire.onReceive(receiveEvent);
 
+  // Then initialize OLED
   display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
+
   display.clearDisplay();
   display.display();
 }
