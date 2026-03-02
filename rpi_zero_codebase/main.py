@@ -1,20 +1,20 @@
-from smbus2 import SMBus, i2c_msg
+from smbus2 import SMBus
+import time
 
 I2C_ADDR = 0x08
 BUS = 1
 
-def send_motor(left, right):
+def send_motor(bus, left, right):
     left_byte = left + 128
     right_byte = right + 128
 
-    data = bytes([0x01, left_byte, right_byte])
+    try:
+        bus.write_i2c_block_data(I2C_ADDR, 0, [0x01, left_byte, right_byte])
+    except OSError:
+        print("I2C write failed (Arduino busy?)")
 
-    with SMBus(BUS) as bus:
-        msg = i2c_msg.write(I2C_ADDR, data)
-        bus.i2c_rdwr(msg)
+with SMBus(BUS) as bus:
 
-
-# Example usage
-send_motor(80, 80)    # Forward
-send_motor(-80, 80)   # Turn
-send_motor(0, 0)      # Stop
+    while True:
+        send_motor(bus, 80, 80)   # Forward
+        time.sleep(0.1)           # 10 Hz update rate
