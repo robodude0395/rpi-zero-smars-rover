@@ -1,54 +1,20 @@
-from smbus2 import SMBus
-import readchar
+import smbus
+import time
 
-ADDR = 0x08
-bus = SMBus(1)
+I2C_ADDR = 0x08
+BUS = 1  # 1 for modern Raspberry Pi
 
-speed = 200
+bus = smbus.SMBus(BUS)
 
-left = 0
-right = 0
+def send_message(message):
+    # Convert string to list of ASCII values
+    data = [ord(c) for c in message]
 
-def send():
-    bus.write_i2c_block_data(
-        ADDR, 0,
-        [left & 0xFF, right & 0xFF]
-    )
+    # Send in one block (max 32 bytes recommended)
+    bus.write_i2c_block_data(I2C_ADDR, 0x00, data)
 
-print("""
-W/S = forward/back
-A/D = turn
-SPACE = stop
-Q = quit
-""")
-
-while True:
-    key = readchar.readkey()
-
-    if key == 'w':
-        left = speed
-        right = speed
-
-    elif key == 's':
-        left = -speed
-        right = -speed
-
-    elif key == 'a':
-        left = -speed
-        right = speed
-
-    elif key == 'd':
-        left = speed
-        right = -speed
-
-    elif key == ' ':
-        left = 0
-        right = 0
-
-    elif key == 'q':
-        break
-
-    send()
-    print("L:", left, "R:", right)
-
-bus.write_i2c_block_data(ADDR,0,[0,0])
+if __name__ == "__main__":
+    while True:
+        msg = input("Enter message: ")
+        send_message(msg[:31])  # limit to 31 chars
+        time.sleep(0.1)
