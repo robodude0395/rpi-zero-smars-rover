@@ -1,24 +1,20 @@
 from smbus2 import SMBus, i2c_msg
-import time
 
 I2C_ADDR = 0x08
-BUS_NUM = 1   # 1 for Pi Zero
+BUS = 1
 
-def send_message(message):
-    # Limit to 31 chars (Arduino buffer safety)
-    message = message[:31]
+def send_motor(left, right):
+    left_byte = left + 128
+    right_byte = right + 128
 
-    # Convert to bytes
-    data = message.encode('utf-8')
+    data = bytes([0x01, left_byte, right_byte])
 
-    # Create I2C write message
-    msg = i2c_msg.write(I2C_ADDR, data)
-
-    with SMBus(BUS_NUM) as bus:
+    with SMBus(BUS) as bus:
+        msg = i2c_msg.write(I2C_ADDR, data)
         bus.i2c_rdwr(msg)
 
-if __name__ == "__main__":
-    while True:
-        text = input("Enter message: ")
-        send_message(text)
-        time.sleep(0.1)
+
+# Example usage
+send_motor(80, 80)    # Forward
+send_motor(-80, 80)   # Turn
+send_motor(0, 0)      # Stop
