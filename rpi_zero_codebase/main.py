@@ -6,7 +6,7 @@ SPI_BUS = 0          # SPI bus 0
 SPI_DEVICE = 0       # CE0
 SPI_SPEED = 500000   # 500 kHz
 UPDATE_RATE = 0.1    # 10 Hz (100ms)
-BASE_SPEED = 80      # Default motor speed (0-127 range)
+BASE_SPEED = 127      # Default motor speed (0-127 range)
 
 # Key mapping: key -> (left_motor_speed, right_motor_speed)
 KEY_COMMANDS = {

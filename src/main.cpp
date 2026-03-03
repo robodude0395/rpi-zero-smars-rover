@@ -20,6 +20,12 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 #define IN3 8   // Motor 2 Direction A
 #define IN4 4   // Motor 2 Direction B
 
+/* ---------- Battery Monitoring ---------- */
+#define BATTERY_PIN A0
+#define BATTERY_MAX_VOLTAGE 4.2
+#define BATTERY_MIN_VOLTAGE 3.3
+#define VOLTAGE_DIVIDER_RATIO 1.0  // Adjust based on your voltage divider
+
 /* ---------- SPI Pins ---------- */
 #define SPI_CS 2    // Custom chip select
 // Pin 10 (hardware SS) must remain INPUT for SPI slave mode
@@ -39,9 +45,16 @@ unsigned long lastCommandTime = 0;
 #define DISPLAY_UPDATE_MS 100
 unsigned long lastDisplayUpdate = 0;
 
+/* ---------- Motor Ramping ---------- */
+#define RAMP_UPDATE_MS 20        // Update ramp every 20ms
+#define RAMP_STEP 10             // Speed change per update (adjust for smoothness)
+unsigned long lastRampUpdate = 0;
+
 /* ---------- Current Motor State ---------- */
 int currentLeftSpeed = 0;
 int currentRightSpeed = 0;
+int targetLeftSpeed = 0;
+int targetRightSpeed = 0;
 byte lastCommandId = 0;
 
 /* ---------- Motor Control Functions ---------- */
@@ -76,8 +89,38 @@ void setRightMotor(int speed) {
 }
 
 void stopMotors() {
-  setLeftMotor(0);
-  setRightMotor(0);
+  targetLeftSpeed = 0;
+  targetRightSpeed = 0;
+}
+
+/* ---------- Motor Ramping ---------- */
+void updateMotorRamping() {
+  unsigned long now = millis();
+  if (now - lastRampUpdate < RAMP_UPDATE_MS) return;
+
+  lastRampUpdate = now;
+
+  // Ramp left motor
+  if (currentLeftSpeed != targetLeftSpeed) {
+    int diff = targetLeftSpeed - currentLeftSpeed;
+    if (abs(diff) <= RAMP_STEP) {
+      currentLeftSpeed = targetLeftSpeed;
+    } else {
+      currentLeftSpeed += (diff > 0) ? RAMP_STEP : -RAMP_STEP;
+    }
+    setMotor(EN1, IN1, IN2, currentLeftSpeed);
+  }
+
+  // Ramp right motor
+  if (currentRightSpeed != targetRightSpeed) {
+    int diff = targetRightSpeed - currentRightSpeed;
+    if (abs(diff) <= RAMP_STEP) {
+      currentRightSpeed = targetRightSpeed;
+    } else {
+      currentRightSpeed += (diff > 0) ? RAMP_STEP : -RAMP_STEP;
+    }
+    setMotor(EN2, IN3, IN4, currentRightSpeed);
+  }
 }
 
 /* ---------- SPI Interrupt Handler ---------- */
@@ -113,9 +156,9 @@ void processCommand() {
   leftSpeed = map(leftSpeed, -128, 127, -255, 255);
   rightSpeed = map(rightSpeed, -128, 127, -255, 255);
 
-  // Apply motor commands
-  setLeftMotor(leftSpeed);
-  setRightMotor(rightSpeed);
+  // Set target speeds (ramping will handle gradual change)
+  targetLeftSpeed = leftSpeed;
+  targetRightSpeed = rightSpeed;
 
   lastCommandId = cmdId;
   lastCommandTime = millis();
@@ -129,38 +172,44 @@ void updateDisplay() {
 
   lastDisplayUpdate = now;
 
+  // Read battery voltage
+  int adcValue = analogRead(BATTERY_PIN);
+  float voltage = (adcValue / 1023.0) * 5.0 * VOLTAGE_DIVIDER_RATIO;
+
+  // Calculate battery percentage
+  int batteryPercent = map(voltage * 100, BATTERY_MIN_VOLTAGE * 100, BATTERY_MAX_VOLTAGE * 100, 0, 100);
+  batteryPercent = constrain(batteryPercent, 0, 100);
+
   display.clearDisplay();
-  display.setTextSize(1);
+  display.setTextSize(2);
   display.setTextColor(SSD1306_WHITE);
 
-  // Title
+  // Motor directions - Large text
   display.setCursor(0, 0);
-  display.println("ROVER STATUS");
-  display.drawLine(0, 10, SCREEN_WIDTH, 10, SSD1306_WHITE);
-
-  // Motor speeds
-  display.setCursor(0, 15);
-  display.print("L: ");
-  display.print(currentLeftSpeed);
-  display.print("  R: ");
-  display.println(currentRightSpeed);
-
-  // Command ID
-  display.setCursor(0, 28);
-  display.print("CMD: ");
-  display.println(lastCommandId);
-
-  // Connection status
-  display.setCursor(0, 41);
-  if (millis() - lastCommandTime < TIMEOUT_MS) {
-    display.println("Status: CONNECTED");
+  display.print("L:");
+  if (currentLeftSpeed > 0) {
+    display.println("FWD");
+  } else if (currentLeftSpeed < 0) {
+    display.println("REV");
   } else {
-    display.println("Status: TIMEOUT");
+    display.println("---");
   }
 
-  // Battery placeholder
-  display.setCursor(0, 54);
-  display.print("Battery: OK");
+  display.setCursor(0, 20);
+  display.print("R:");
+  if (currentRightSpeed > 0) {
+    display.println("FWD");
+  } else if (currentRightSpeed < 0) {
+    display.println("REV");
+  } else {
+    display.println("---");
+  }
+
+  // Battery percentage - Large text
+  display.setCursor(0, 44);
+  display.print("BAT:");
+  display.print(batteryPercent);
+  display.println("%");
 
   display.display();
 }
@@ -168,7 +217,7 @@ void updateDisplay() {
 /* ---------- Safety Check ---------- */
 void checkTimeout() {
   if (millis() - lastCommandTime > TIMEOUT_MS) {
-    if (currentLeftSpeed != 0 || currentRightSpeed != 0) {
+    if (targetLeftSpeed != 0 || targetRightSpeed != 0) {
       stopMotors();
     }
   }
@@ -217,6 +266,7 @@ void setup() {
 /* ---------- Main Loop ---------- */
 void loop() {
   processCommand();
+  updateMotorRamping();
   checkTimeout();
   updateDisplay();
 }
