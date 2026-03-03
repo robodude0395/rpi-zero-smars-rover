@@ -6,14 +6,14 @@ SPI_BUS = 0          # SPI bus 0
 SPI_DEVICE = 0       # CE0
 SPI_SPEED = 500000   # 500 kHz
 UPDATE_RATE = 0.1    # 10 Hz (100ms)
-BASE_SPEED = 127      # Default motor speed (0-127 range)
+BASE_SPEED = 127      # Default motor speed (0-BASE_SPEED range)
 
 # Key mapping: key -> (left_motor_speed, right_motor_speed)
 KEY_COMMANDS = {
-    'w': (127, 127),      # Forward
-    's': (-127, -127),    # Backward
-    'a': (-127, 127),     # Left turn (tank style)
-    'd': (127, -127),     # Right turn (tank style)
+    'w': (BASE_SPEED, BASE_SPEED),      # Forward
+    's': (-BASE_SPEED, -BASE_SPEED),    # Backward
+    'a': (-BASE_SPEED, BASE_SPEED),     # Left turn (tank style)
+    'd': (BASE_SPEED, -BASE_SPEED),     # Right turn (tank style)
     ' ': (0, 0),        # Stop (spacebar)
     'q': None           # Quit
 }
@@ -27,9 +27,9 @@ class RoverController:
         self.command_id = 0
 
     def send_motor(self, left, right):
-        # Clamp speeds to -127 to 127
-        left = max(-127, min(127, left))
-        right = max(-127, min(127, right))
+        # Clamp speeds to -BASE_SPEED to BASE_SPEED
+        left = max(-BASE_SPEED, min(BASE_SPEED, left))
+        right = max(-BASE_SPEED, min(BASE_SPEED, right))
 
         # Convert to unsigned byte (128 offset encoding)
         left_byte = left + 128

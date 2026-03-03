@@ -47,7 +47,7 @@ unsigned long lastDisplayUpdate = 0;
 
 /* ---------- Motor Ramping ---------- */
 #define RAMP_UPDATE_MS 20        // Update ramp every 20ms
-#define RAMP_STEP 10             // Speed change per update (adjust for smoothness)
+#define RAMP_STEP 5             // Speed change per update (adjust for smoothness)
 unsigned long lastRampUpdate = 0;
 
 /* ---------- Current Motor State ---------- */
