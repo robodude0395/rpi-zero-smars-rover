@@ -55,7 +55,7 @@ class RoverController:
 
 if __name__ == "__main__":
 
-    rover = RoverController(BUS_NUM, I2C_ADDR)
+    rover = RoverController(SPI_BUS, SPI_DEVICE, SPI_SPEED)
 
     # Display help text
     print("Keyboard Controls:")
