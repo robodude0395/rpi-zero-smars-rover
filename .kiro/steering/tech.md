@@ -1,57 +1,59 @@
+---
+inclusion: always
+---
+
 # Technology Stack
 
-## Arduino Component
+## Arduino (Slave Controller)
 
-**Platform**: PlatformIO with Arduino framework
-**Board**: Arduino Pro Mini (ATmega328P @ 16MHz)
-**Build System**: PlatformIO
-
-### Libraries
-- `Adafruit SSD1306` - OLED display driver
-- `Adafruit GFX Library` - Graphics primitives
-- `Wire` - I2C communication (built-in)
+- **Platform**: ATmega328P (Arduino Pro Mini 16MHz)
+- **Build System**: PlatformIO
+- **Framework**: Arduino
+- **Libraries**:
+  - Adafruit SSD1306 (OLED display)
+  - Adafruit GFX Library (graphics primitives)
+  - Wire (I2C communication)
 
 ### Common Commands
 
 ```bash
-# Build the project
+# Build Arduino firmware
 pio run
 
-# Upload to Arduino
+# Upload to Arduino Pro Mini
 pio run --target upload
 
-# Clean build files
+# Clean build artifacts
 pio run --target clean
 
 # Monitor serial output
 pio device monitor
 ```
 
-### Configuration
-- Upload speed: 57600 baud
-- Environment: `pro16` (defined in platformio.ini)
+## Raspberry Pi (Master Controller)
 
-## Raspberry Pi Component
+- **Platform**: Raspberry Pi Zero
+- **Language**: Python 3
+- **Dependencies**:
+  - smbus2 (I2C communication)
+  - readchar (keyboard input)
 
-**Language**: Python 3
-**Location**: `rpi_zero_codebase/`
-
-### Dependencies
-- `smbus2` - I2C communication library
-- `readchar` - Keyboard input handling
-
-### Setup & Run
+### Common Commands
 
 ```bash
-# Install dependencies
+# Install Python dependencies
 pip install -r rpi_zero_codebase/requirements.txt
 
-# Run the control script
+# Run master controller
 python rpi_zero_codebase/main.py
 ```
 
-## Hardware Communication
+## Communication Protocol
 
-**Protocol**: I2C
-**Arduino Address**: 0x08
-**Data Format**: 2-byte commands (left motor, right motor) as signed values (-128 to 127)
+- **Primary**: SPI (Pi master → Arduino slave)
+- **Display**: I2C (Arduino → OLED at 0x3C)
+- **Command Structure**: 3-byte packets
+  - Byte 0: Command ID
+  - Byte 1: Left motor speed (0-255, offset by 128)
+  - Byte 2: Right motor speed (0-255, offset by 128)
+- **Speed Encoding**: 128 = stop, >128 = forward, <128 = backward

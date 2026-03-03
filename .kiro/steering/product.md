@@ -1,18 +1,14 @@
+---
+inclusion: always
+---
+
 # Product Overview
 
-This is a SMARS rover project controlled by a Raspberry Pi Zero. The system consists of two components:
+SPI-controlled tracked tank rover with dual-controller architecture:
 
-1. **Arduino Pro Mini (ATmega328P)** - Motor controller and display driver that receives commands via I2C
-2. **Raspberry Pi Zero** - Master controller that sends motor commands and reads battery status
+- **Master**: Raspberry Pi Zero (Python) sends motor commands via SPI
+- **Slave**: Arduino Pro Mini (ATmega328P) controls motors and display
+- **Display**: SSD1306 128x64 I2C OLED showing motor state and battery level
+- **Motors**: Two DC motors driven by L293D dual H-bridge
 
-The Arduino manages:
-- Dual motor control (left/right) with PWM speed control
-- OLED display (128x64 SSD1306) showing battery level and motor status
-- Battery voltage monitoring via analog input
-- I2C slave communication (address 0x08)
-
-The Raspberry Pi provides:
-- Keyboard-based control interface (WASD + Space/Q)
-- I2C master communication to send motor commands
-
-This is a typical embedded robotics project for educational or hobby rover applications.
+The system uses non-blocking timing patterns and implements safety timeouts to stop motors if communication is lost.

@@ -1,63 +1,61 @@
+#include <Arduino.h>
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
+#include <SPI.h>
 
-/* ---------- OLED ---------- */
+/* ---------- OLED Display ---------- */
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
-Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
+#define OLED_RESET -1
+#define OLED_ADDRESS 0x3C
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
-/* ---------- I2C ---------- */
-#define I2C_ADDR 0x08
+/* ---------- Motor Driver Pins (L293D) ---------- */
+#define EN1 9   // Motor 1 Enable (PWM)
+#define IN1 6   // Motor 1 Direction A
+#define IN2 7   // Motor 1 Direction B
 
-/* ---------- Motor Pins ---------- */
-#define EN1 9
-#define IN1 6
-#define IN2 7
+#define EN2 3   // Motor 2 Enable (PWM)
+#define IN3 8   // Motor 2 Direction A
+#define IN4 4   // Motor 2 Direction B
 
-#define EN2 10
-#define IN3 8
-#define IN4 4
+/* ---------- SPI Pins ---------- */
+#define SPI_CS 2    // Custom chip select
+// Pin 10 (hardware SS) must remain INPUT for SPI slave mode
+// MOSI = 11, MISO = 12, SCK = 13 (hardware SPI)
 
-/* ---------- State ---------- */
-volatile uint8_t cmdBuffer[3];
+/* ---------- Communication Protocol ---------- */
+#define CMD_BUFFER_SIZE 3
+volatile byte spiBuffer[CMD_BUFFER_SIZE];
+volatile byte spiIndex = 0;
 volatile bool newCommand = false;
 
-int leftSpeed = 0;
-int rightSpeed = 0;
-
-unsigned long lastBatteryRead = 0;
-unsigned long lastDisplayUpdate = 0;
+/* ---------- Safety Timeout ---------- */
+#define TIMEOUT_MS 1000
 unsigned long lastCommandTime = 0;
 
-int batteryPercent = 0;
+/* ---------- Display Update ---------- */
+#define DISPLAY_UPDATE_MS 100
+unsigned long lastDisplayUpdate = 0;
 
-/* ---------- I2C Receive ---------- */
-void receiveEvent(int howMany) {
-  if (howMany >= 3) {
-    cmdBuffer[0] = Wire.read();
-    cmdBuffer[1] = Wire.read();
-    cmdBuffer[2] = Wire.read();
-    newCommand = true;
-  }
+/* ---------- Current Motor State ---------- */
+int currentLeftSpeed = 0;
+int currentRightSpeed = 0;
+byte lastCommandId = 0;
 
-  // Clear any extra bytes
-  while (Wire.available()) Wire.read();
-}
-
-/* ---------- Motor Control ---------- */
+/* ---------- Motor Control Functions ---------- */
 void setMotor(int en, int in1, int in2, int speed) {
-
   speed = constrain(speed, -255, 255);
 
   if (speed > 0) {
-    digitalWrite(in1, HIGH);
-    digitalWrite(in2, LOW);
+    digitalWrite(in1, LOW);
+    digitalWrite(in2, HIGH);
     analogWrite(en, speed);
   }
   else if (speed < 0) {
-    digitalWrite(in1, LOW);
-    digitalWrite(in2, HIGH);
+    digitalWrite(in1, HIGH);
+    digitalWrite(in2, LOW);
     analogWrite(en, -speed);
   }
   else {
@@ -67,105 +65,158 @@ void setMotor(int en, int in1, int in2, int speed) {
   }
 }
 
-void updateMotors() {
-  setMotor(EN1, IN1, IN2, leftSpeed);
-  setMotor(EN2, IN3, IN4, rightSpeed);
+void setLeftMotor(int speed) {
+  currentLeftSpeed = speed;
+  setMotor(EN1, IN1, IN2, speed);
 }
 
-/* ---------- Battery ---------- */
-void readBattery() {
-
-  int raw = analogRead(A0);
-  float voltage = raw * (5.0 / 1023.0);
-
-  // Adjust these values for your battery pack
-  float minVoltage = 6.4;   // empty (2S Li-ion)
-  float maxVoltage = 8.4;   // full
-
-  batteryPercent = (voltage - minVoltage) * 100.0 / (maxVoltage - minVoltage);
-  batteryPercent = constrain(batteryPercent, 0, 100);
+void setRightMotor(int speed) {
+  currentRightSpeed = speed;
+  setMotor(EN2, IN3, IN4, speed);
 }
 
-/* ---------- Display ---------- */
+void stopMotors() {
+  setLeftMotor(0);
+  setRightMotor(0);
+}
+
+/* ---------- SPI Interrupt Handler ---------- */
+ISR(SPI_STC_vect) {
+  byte received = SPDR;
+
+  if (spiIndex < CMD_BUFFER_SIZE) {
+    spiBuffer[spiIndex++] = received;
+
+    if (spiIndex >= CMD_BUFFER_SIZE) {
+      newCommand = true;
+      spiIndex = 0;
+    }
+  }
+
+  SPDR = 0; // Send dummy byte back
+}
+
+/* ---------- Process SPI Command ---------- */
+void processCommand() {
+  if (!newCommand) return;
+
+  // Decode 3-byte command packet
+  byte cmdId = spiBuffer[0];
+  byte leftByte = spiBuffer[1];
+  byte rightByte = spiBuffer[2];
+
+  // Convert from offset encoding (128 = stop)
+  int leftSpeed = (int)leftByte - 128;
+  int rightSpeed = (int)rightByte - 128;
+
+  // Scale to -255 to 255 range
+  leftSpeed = map(leftSpeed, -128, 127, -255, 255);
+  rightSpeed = map(rightSpeed, -128, 127, -255, 255);
+
+  // Apply motor commands
+  setLeftMotor(leftSpeed);
+  setRightMotor(rightSpeed);
+
+  lastCommandId = cmdId;
+  lastCommandTime = millis();
+  newCommand = false;
+}
+
+/* ---------- Display Update ---------- */
 void updateDisplay() {
+  unsigned long now = millis();
+  if (now - lastDisplayUpdate < DISPLAY_UPDATE_MS) return;
+
+  lastDisplayUpdate = now;
 
   display.clearDisplay();
-  display.setTextSize(2);
+  display.setTextSize(1);
   display.setTextColor(SSD1306_WHITE);
+
+  // Title
   display.setCursor(0, 0);
+  display.println("ROVER STATUS");
+  display.drawLine(0, 10, SCREEN_WIDTH, 10, SSD1306_WHITE);
 
-  display.print("L:");
-  display.println(leftSpeed);
+  // Motor speeds
+  display.setCursor(0, 15);
+  display.print("L: ");
+  display.print(currentLeftSpeed);
+  display.print("  R: ");
+  display.println(currentRightSpeed);
 
-  display.print("R:");
-  display.println(rightSpeed);
+  // Command ID
+  display.setCursor(0, 28);
+  display.print("CMD: ");
+  display.println(lastCommandId);
 
-  display.print("B:");
-  display.print(batteryPercent);
-  display.println("%");
+  // Connection status
+  display.setCursor(0, 41);
+  if (millis() - lastCommandTime < TIMEOUT_MS) {
+    display.println("Status: CONNECTED");
+  } else {
+    display.println("Status: TIMEOUT");
+  }
+
+  // Battery placeholder
+  display.setCursor(0, 54);
+  display.print("Battery: OK");
 
   display.display();
 }
 
+/* ---------- Safety Check ---------- */
+void checkTimeout() {
+  if (millis() - lastCommandTime > TIMEOUT_MS) {
+    if (currentLeftSpeed != 0 || currentRightSpeed != 0) {
+      stopMotors();
+    }
+  }
+}
+
 /* ---------- Setup ---------- */
 void setup() {
-
   // Motor pins
+  pinMode(EN1, OUTPUT);
+  pinMode(EN2, OUTPUT);
   pinMode(IN1, OUTPUT);
   pinMode(IN2, OUTPUT);
-  pinMode(EN1, OUTPUT);
-
   pinMode(IN3, OUTPUT);
   pinMode(IN4, OUTPUT);
-  pinMode(EN2, OUTPUT);
 
-  // Start I2C as SLAVE
-  Wire.begin(I2C_ADDR);
-  Wire.onReceive(receiveEvent);
+  // Safe startup - motors off
+  stopMotors();
 
-  // Initialize OLED
-  display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
+  // SPI slave setup
+  pinMode(MISO, OUTPUT);
+  pinMode(SPI_CS, INPUT);
+  pinMode(10, INPUT); // Hardware SS must be INPUT for slave mode
+
+  SPCR |= _BV(SPE);   // Enable SPI in slave mode
+  SPCR |= _BV(SPIE);  // Enable SPI interrupt
+
+  SPI.attachInterrupt();
+
+  // I2C and OLED
+  Wire.begin();
+  if (!display.begin(SSD1306_SWITCHCAPVCC, OLED_ADDRESS)) {
+    // OLED init failed - continue anyway
+  }
+
   display.clearDisplay();
+  display.setTextSize(1);
   display.setTextColor(SSD1306_WHITE);
-  display.setTextSize(2);
   display.setCursor(0, 0);
-  display.println("READY");
+  display.println("ROVER READY");
+  display.println("Waiting for SPI...");
   display.display();
 
   lastCommandTime = millis();
 }
 
-/* ---------- Loop ---------- */
+/* ---------- Main Loop ---------- */
 void loop() {
-
-  // 1️⃣ Handle new command
-  if (newCommand) {
-    if (cmdBuffer[0] == 0x01) {
-      leftSpeed = (int)cmdBuffer[1] - 128;
-      rightSpeed = (int)cmdBuffer[2] - 128;
-      lastCommandTime = millis();
-    }
-    newCommand = false;
-  }
-
-  // 2️⃣ Watchdog safety stop
-  if (millis() - lastCommandTime > 500) {
-    leftSpeed = 0;
-    rightSpeed = 0;
-  }
-
-  // 3️⃣ Continuous motor update
-  updateMotors();
-
-  // 4️⃣ Battery every 500ms
-  if (millis() - lastBatteryRead > 500) {
-    readBattery();
-    lastBatteryRead = millis();
-  }
-
-  // 5️⃣ Display every 500ms
-  if (millis() - lastDisplayUpdate > 500) {
-    updateDisplay();
-    lastDisplayUpdate = millis();
-  }
+  processCommand();
+  checkTimeout();
+  updateDisplay();
 }
