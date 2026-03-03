@@ -1,9 +1,10 @@
-from smbus2 import SMBus
+import spidev
 import time
 import readchar
 
-I2C_ADDR = 0x08
-BUS_NUM = 1          # Pi Zero uses bus 1
+SPI_BUS = 0          # SPI bus 0
+SPI_DEVICE = 0       # CE0
+SPI_SPEED = 500000   # 500 kHz
 UPDATE_RATE = 0.1    # 10 Hz (100ms)
 BASE_SPEED = 80      # Default motor speed (0-127 range)
 
@@ -18,33 +19,36 @@ KEY_COMMANDS = {
 }
 
 class RoverController:
-    def __init__(self, bus_num=1, addr=0x08):
-        self.bus = SMBus(bus_num)
-        self.addr = addr
+    def __init__(self, bus=0, device=0, speed=500000):
+        self.spi = spidev.SpiDev()
+        self.spi.open(bus, device)
+        self.spi.max_speed_hz = speed
+        self.spi.mode = 0  # SPI mode 0 (CPOL=0, CPHA=0)
+        self.command_id = 0
 
     def send_motor(self, left, right):
-        # Clamp speeds
+        # Clamp speeds to -127 to 127
         left = max(-127, min(127, left))
         right = max(-127, min(127, right))
 
-        # Convert to unsigned byte
+        # Convert to unsigned byte (128 offset encoding)
         left_byte = left + 128
         right_byte = right + 128
 
+        # Increment command ID
+        self.command_id = (self.command_id + 1) % 256
+
+        # Send 3-byte packet: [command_id, left_speed, right_speed]
         try:
-            self.bus.write_i2c_block_data(
-                self.addr,
-                0x00,                    # command register (ignored by Arduino)
-                [0x01, left_byte, right_byte]
-            )
-        except OSError:
-            print("I2C write failed (Arduino busy or disconnected)")
+            self.spi.xfer2([self.command_id, left_byte, right_byte])
+        except Exception as e:
+            print(f"SPI write failed: {e}")
 
     def stop(self):
         self.send_motor(0, 0)
 
     def close(self):
-        self.bus.close()
+        self.spi.close()
 
 
 # ---------------- MAIN LOOP ---------------- #

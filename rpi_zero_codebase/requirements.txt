@@ -1,2 +1,2 @@
-smbus2
+spidev
 readchar
