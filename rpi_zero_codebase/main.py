@@ -10,10 +10,10 @@ BASE_SPEED = 127      # Default motor speed (0-127 range)
 
 # Key mapping: key -> (left_motor_speed, right_motor_speed)
 KEY_COMMANDS = {
-    'w': (80, 80),      # Forward
-    's': (-80, -80),    # Backward
-    'a': (-80, 80),     # Left turn (tank style)
-    'd': (80, -80),     # Right turn (tank style)
+    'w': (127, 127),      # Forward
+    's': (-127, -127),    # Backward
+    'a': (-127, 127),     # Left turn (tank style)
+    'd': (127, -127),     # Right turn (tank style)
     ' ': (0, 0),        # Stop (spacebar)
     'q': None           # Quit
 }
